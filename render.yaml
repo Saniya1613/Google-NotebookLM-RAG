@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: notebooklm-rag
+    runtime: node
+    plan: free
+    buildCommand: npm install --legacy-peer-deps
+    startCommand: npm start
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
