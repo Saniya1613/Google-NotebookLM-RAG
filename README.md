@@ -202,7 +202,6 @@ Google-NotebookLM-RAG/
 │       ├── upload.js           # POST /api/upload — PDF upload + ingestion
 │       ├── chat.js             # POST /api/chat — retrieval + generation
 │       └── documents.js        # GET /api/documents — list indexed documents
-├── .env.example                # Environment variables template
 ├── vercel.json                 # Vercel deployment configuration
 ├── package.json
 └── README.md
@@ -229,8 +228,8 @@ cd Google-NotebookLM-RAG
 # 2. Install dependencies
 npm install
 
-# 3. Configure environment variables
-cp .env.example .env
+# 3. Create .env file with your API keys
+touch .env
 # Edit .env with your API keys:
 #   GROQ_API_KEY=gsk_your-key
 #   GOOGLE_API_KEY=your-google-key
