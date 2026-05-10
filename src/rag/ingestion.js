@@ -4,7 +4,7 @@
  * This module handles the full ingestion process:
  * 1. Load PDF/Text documents
  * 2. Chunk documents using Recursive Character Text Splitting
- * 3. Generate embeddings using OpenAI text-embedding-3-large
+ * 3. Generate embeddings using local Transformers.js model
  * 4. Store embeddings in Qdrant vector database
  * 
  * Chunking Strategy: RecursiveCharacterTextSplitter
@@ -22,20 +22,18 @@
 
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { OpenAIEmbeddings } from "@langchain/openai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { v4 as uuidv4 } from "uuid";
+import { LocalEmbeddings } from "./embeddings.js";
 
 // In-memory document registry to track uploaded documents
 const documentRegistry = new Map();
 
 /**
- * Get the configured embeddings model
+ * Get the local embeddings model instance
  */
 function getEmbeddings() {
-  return new OpenAIEmbeddings({
-    model: "text-embedding-3-large",
-  });
+  return new LocalEmbeddings();
 }
 
 /**
@@ -94,7 +92,7 @@ export async function ingestDocument(filePath, originalName) {
   }));
 
   // Step 3 & 4: Embed and store chunks in Qdrant vector database
-  console.log(`🔢 Generating embeddings and storing in Qdrant...`);
+  console.log(`🔢 Generating embeddings locally and storing in Qdrant...`);
 
   const embeddings = getEmbeddings();
   await QdrantVectorStore.fromDocuments(enrichedChunks, embeddings, {

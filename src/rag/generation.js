@@ -1,14 +1,17 @@
 /**
  * Generation Module
  * 
- * Uses OpenAI's GPT model to generate answers grounded in retrieved document context.
- * The system prompt strictly instructs the LLM to answer ONLY from the provided context,
- * preventing hallucination and ensuring answer quality.
+ * Uses Groq's LLM (llama-3.3-70b-versatile) to generate answers
+ * grounded in retrieved document context.
+ * The system prompt strictly instructs the LLM to answer ONLY from
+ * the provided context, preventing hallucination.
  */
 
-import OpenAI from "openai";
+import Groq from "groq-sdk";
 
-const client = new OpenAI();
+const client = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 /**
  * Generate a grounded answer using retrieved context chunks
@@ -40,7 +43,7 @@ DOCUMENT CONTEXT:
 ${formattedContext}`;
 
   const response = await client.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model: "llama-3.3-70b-versatile",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: query },
