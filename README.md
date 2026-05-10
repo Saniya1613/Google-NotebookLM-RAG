@@ -30,13 +30,12 @@ A RAG-powered application inspired by Google NotebookLM — upload any PDF docum
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   Web Frontend   │────▶│  Express.js API   │────▶│   Qdrant Cloud   │
 │  (HTML/CSS/JS)   │◀────│   (Node.js)       │◀────│   Vector DB      │
-└──────────────────┘     └────────┬──────────┘     └──────────────────┘
-                                  │
-                          ┌───────▼────────┐
-                          │     OpenAI     │
-                          │  Embeddings +  │
-                          │      LLM      │
-                          └───────────────┘
+└──────────────────┘     └───┬──────────┬───┘     └──────────────────┘
+                             │          │
+                   ┌─────────▼──┐  ┌────▼─────────────────┐
+                   │   Groq     │  │  Transformers.js     │
+                   │   LLM      │  │  Local Embeddings    │
+                   └────────────┘  └──────────────────────┘
 ```
 
 ---
@@ -77,10 +76,12 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 | `chunkOverlap` | 200 | Ensures no information lost at chunk boundaries |
 | `separators` | `["\n\n", "\n", ". ", " ", ""]` | Prioritizes paragraph → line → sentence → word splits |
 
-### 3. Embedding Model
+### 3. Embedding Model (`src/rag/embeddings.js`)
 
-- **Model:** OpenAI `text-embedding-3-large`
-- **Dimensions:** 3072
+- **Model:** `Xenova/all-MiniLM-L6-v2` (runs locally via Transformers.js)
+- **Dimensions:** 384
+- Runs entirely on the server — no external API key needed for embeddings
+- Custom LangChain-compatible `LocalEmbeddings` class wraps the local model
 - Converts text chunks into high-dimensional vectors for semantic search
 
 ### 4. Vector Database — Qdrant Cloud
@@ -100,7 +101,7 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 - Retrieved chunks are formatted with page references
 - Strict system prompt ensures the LLM answers ONLY from the provided context
 - If the answer isn't in the document, the LLM explicitly says so
-- **Model:** OpenAI `gpt-4.1-mini` with `temperature=0.3` for factual responses
+- **Model:** Groq `llama-3.3-70b-versatile` with `temperature=0.3` for factual responses
 
 ---
 
@@ -112,9 +113,9 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 | Server | Express.js |
 | PDF Loading | LangChain PDFLoader |
 | Chunking | LangChain RecursiveCharacterTextSplitter |
-| Embeddings | OpenAI text-embedding-3-large |
+| Embeddings | Transformers.js all-MiniLM-L6-v2 (local, free) |
 | Vector DB | Qdrant Cloud |
-| LLM | OpenAI GPT-4.1-mini |
+| LLM | Groq llama-3.3-70b-versatile |
 | Frontend | HTML5, CSS3, Vanilla JavaScript |
 | Deployment | Render |
 
@@ -131,8 +132,9 @@ Google-NotebookLM-RAG/
 ├── src/
 │   ├── index.js             # Express server entry point
 │   ├── rag/
+│   │   ├── embeddings.js    # Local embeddings using Transformers.js
 │   │   ├── ingestion.js     # Ingestion pipeline (load → chunk → embed → store)
-│   │   └── generation.js    # LLM generation with grounding rules
+│   │   └── generation.js    # LLM generation with Groq + grounding rules
 │   └── routes/
 │       ├── upload.js        # POST /api/upload — file upload + ingestion
 │       ├── chat.js          # POST /api/chat — query + retrieval + generation
@@ -151,7 +153,7 @@ Google-NotebookLM-RAG/
 ### Prerequisites
 
 - Node.js 18+
-- OpenAI API key
+- Groq API key (free at [console.groq.com](https://console.groq.com))
 - Qdrant Cloud account (free tier available at [cloud.qdrant.io](https://cloud.qdrant.io))
 
 ### Steps
@@ -173,7 +175,7 @@ Google-NotebookLM-RAG/
    ```
    Edit `.env` and add your keys:
    ```
-   OPENAI_API_KEY=sk-your-key-here
+   GROQ_API_KEY=gsk_your-groq-key-here
    QDRANT_URL=https://your-cluster.cloud.qdrant.io
    QDRANT_API_KEY=your-qdrant-api-key
    PORT=3000
