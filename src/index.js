@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import { uploadRouter } from "./routes/upload.js";
 import { chatRouter } from "./routes/chat.js";
 import { documentsRouter } from "./routes/documents.js";
-import { preloadEmbeddingModel } from "./rag/embeddings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,14 +34,6 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
-// Start server and preload embedding model
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🧠 NotebookLM RAG server running at http://localhost:${PORT}`);
-  
-  // Preload the local embedding model so first upload is faster
-  try {
-    await preloadEmbeddingModel();
-  } catch (err) {
-    console.warn("⚠️ Could not preload embedding model:", err.message);
-  }
 });

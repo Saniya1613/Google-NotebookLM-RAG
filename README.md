@@ -33,8 +33,8 @@ A RAG-powered application inspired by Google NotebookLM — upload any PDF docum
 └──────────────────┘     └───┬──────────┬───┘     └──────────────────┘
                              │          │
                    ┌─────────▼──┐  ┌────▼─────────────────┐
-                   │   Groq     │  │  Transformers.js     │
-                   │   LLM      │  │  Local Embeddings    │
+                   │   Groq     │  │  Google Gemini       │
+                   │   LLM      │  │  Embeddings          │
                    └────────────┘  └──────────────────────┘
 ```
 
@@ -78,10 +78,10 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 
 ### 3. Embedding Model (`src/rag/embeddings.js`)
 
-- **Model:** `Xenova/all-MiniLM-L6-v2` (runs locally via Transformers.js)
-- **Dimensions:** 384
-- Runs entirely on the server — no external API key needed for embeddings
-- Custom LangChain-compatible `LocalEmbeddings` class wraps the local model
+- **Model:** Google Gemini `text-embedding-004`
+- **Dimensions:** 768
+- Free cloud-based embedding API (1,500 requests/day free tier)
+- LangChain-compatible via `@langchain/google-genai`
 - Converts text chunks into high-dimensional vectors for semantic search
 
 ### 4. Vector Database — Qdrant Cloud
@@ -113,7 +113,7 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 | Server | Express.js |
 | PDF Loading | LangChain PDFLoader |
 | Chunking | LangChain RecursiveCharacterTextSplitter |
-| Embeddings | Transformers.js all-MiniLM-L6-v2 (local, free) |
+| Embeddings | Google Gemini text-embedding-004 (free) |
 | Vector DB | Qdrant Cloud |
 | LLM | Groq llama-3.3-70b-versatile |
 | Frontend | HTML5, CSS3, Vanilla JavaScript |
@@ -132,7 +132,7 @@ Google-NotebookLM-RAG/
 ├── src/
 │   ├── index.js             # Express server entry point
 │   ├── rag/
-│   │   ├── embeddings.js    # Local embeddings using Transformers.js
+│   │   ├── embeddings.js    # Google Gemini embeddings integration
 │   │   ├── ingestion.js     # Ingestion pipeline (load → chunk → embed → store)
 │   │   └── generation.js    # LLM generation with Groq + grounding rules
 │   └── routes/
@@ -154,6 +154,7 @@ Google-NotebookLM-RAG/
 
 - Node.js 18+
 - Groq API key (free at [console.groq.com](https://console.groq.com))
+- Google AI API key (free at [ai.google.dev](https://ai.google.dev))
 - Qdrant Cloud account (free tier available at [cloud.qdrant.io](https://cloud.qdrant.io))
 
 ### Steps
@@ -176,6 +177,7 @@ Google-NotebookLM-RAG/
    Edit `.env` and add your keys:
    ```
    GROQ_API_KEY=gsk_your-groq-key-here
+   GOOGLE_API_KEY=your-google-ai-key-here
    QDRANT_URL=https://your-cluster.cloud.qdrant.io
    QDRANT_API_KEY=your-qdrant-api-key
    PORT=3000
