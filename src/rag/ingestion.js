@@ -1,0 +1,156 @@
+/**
+ * Document Ingestion Pipeline
+ * 
+ * This module handles the full ingestion process:
+ * 1. Load PDF/Text documents
+ * 2. Chunk documents using Recursive Character Text Splitting
+ * 3. Generate embeddings using OpenAI text-embedding-3-large
+ * 4. Store embeddings in Qdrant vector database
+ * 
+ * Chunking Strategy: RecursiveCharacterTextSplitter
+ * -------------------------------------------------
+ * We use RecursiveCharacterTextSplitter because it:
+ * - Splits text hierarchically using separators: ["\n\n", "\n", " ", ""]
+ * - Preserves paragraph and sentence boundaries when possible
+ * - Creates semantically coherent chunks (not arbitrary cuts)
+ * - Maintains context with configurable overlap between chunks
+ * 
+ * Configuration:
+ * - chunkSize: 1000 characters — balances context richness with retrieval precision
+ * - chunkOverlap: 200 characters — ensures no information is lost at chunk boundaries
+ */
+
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { QdrantVectorStore } from "@langchain/qdrant";
+import { v4 as uuidv4 } from "uuid";
+
+// In-memory document registry to track uploaded documents
+const documentRegistry = new Map();
+
+/**
+ * Get the configured embeddings model
+ */
+function getEmbeddings() {
+  return new OpenAIEmbeddings({
+    model: "text-embedding-3-large",
+  });
+}
+
+/**
+ * Get or create a Qdrant vector store for a specific collection
+ */
+async function getVectorStore(collectionName) {
+  const embeddings = getEmbeddings();
+  return await QdrantVectorStore.fromExistingCollection(embeddings, {
+    url: process.env.QDRANT_URL,
+    apiKey: process.env.QDRANT_API_KEY,
+    collectionName,
+  });
+}
+
+/**
+ * Ingest a PDF document into the RAG pipeline
+ * 
+ * @param {string} filePath - Path to the uploaded PDF file
+ * @param {string} originalName - Original filename for display
+ * @returns {Object} - Document metadata including ID, chunk count, and collection name
+ */
+export async function ingestDocument(filePath, originalName) {
+  const documentId = uuidv4();
+  const collectionName = `doc_${documentId.replace(/-/g, "_")}`;
+
+  console.log(`📄 Loading document: ${originalName}`);
+
+  // Step 1: Load the PDF document
+  const loader = new PDFLoader(filePath);
+  const rawDocs = await loader.load();
+
+  console.log(`📖 Loaded ${rawDocs.length} pages from PDF`);
+
+  // Step 2: Chunk the document using RecursiveCharacterTextSplitter
+  // This strategy splits text hierarchically, preserving semantic boundaries
+  const textSplitter = new RecursiveCharacterTextSplitter({
+    chunkSize: 1000,     // Each chunk contains up to 1000 characters
+    chunkOverlap: 200,   // 200 character overlap to maintain context between chunks
+    separators: ["\n\n", "\n", ". ", " ", ""],  // Split priority: paragraphs > lines > sentences > words
+  });
+
+  const chunks = await textSplitter.splitDocuments(rawDocs);
+
+  console.log(`✂️  Split into ${chunks.length} chunks`);
+
+  // Add document metadata to each chunk for traceability
+  const enrichedChunks = chunks.map((chunk, index) => ({
+    ...chunk,
+    metadata: {
+      ...chunk.metadata,
+      documentId,
+      documentName: originalName,
+      chunkIndex: index,
+      totalChunks: chunks.length,
+    },
+  }));
+
+  // Step 3 & 4: Embed and store chunks in Qdrant vector database
+  console.log(`🔢 Generating embeddings and storing in Qdrant...`);
+
+  const embeddings = getEmbeddings();
+  await QdrantVectorStore.fromDocuments(enrichedChunks, embeddings, {
+    url: process.env.QDRANT_URL,
+    apiKey: process.env.QDRANT_API_KEY,
+    collectionName,
+  });
+
+  // Register the document
+  const docInfo = {
+    id: documentId,
+    name: originalName,
+    collectionName,
+    chunkCount: chunks.length,
+    pageCount: rawDocs.length,
+    uploadedAt: new Date().toISOString(),
+  };
+
+  documentRegistry.set(documentId, docInfo);
+
+  console.log(`✅ Indexing complete! ${chunks.length} chunks stored in collection: ${collectionName}`);
+
+  return docInfo;
+}
+
+/**
+ * Retrieve relevant chunks for a user query from a specific document
+ * 
+ * @param {string} documentId - The document to search within
+ * @param {string} query - The user's natural language question
+ * @param {number} k - Number of top relevant chunks to retrieve (default: 4)
+ * @returns {Array} - Top-k most relevant document chunks
+ */
+export async function retrieveChunks(documentId, query, k = 4) {
+  const docInfo = documentRegistry.get(documentId);
+  if (!docInfo) {
+    throw new Error(`Document not found: ${documentId}`);
+  }
+
+  const vectorStore = await getVectorStore(docInfo.collectionName);
+  const retriever = vectorStore.asRetriever({ k });
+  const relevantChunks = await retriever.invoke(query);
+
+  return relevantChunks;
+}
+
+/**
+ * Get all registered documents
+ */
+export function getDocuments() {
+  return Array.from(documentRegistry.values());
+}
+
+/**
+ * Check if a document exists
+ */
+export function documentExists(documentId) {
+  return documentRegistry.has(documentId);
+}
