@@ -1,123 +1,183 @@
-# 🧠 Google NotebookLM RAG
+# 🧠 Google NotebookLM — RAG Application
 
-A RAG-powered application inspired by Google NotebookLM — upload any PDF document and have an intelligent conversation with it. Answers are grounded in your document's actual content, not the LLM's general knowledge.
-
-## Submitted By
-
-- **Name:** Saniya Sanjiv Patil
-- **Roll Number:** 2024EB02305
+> **Assignment 03** — Build your own version of Google NotebookLM: a RAG-powered document chatbot where users upload a PDF and have a grounded, intelligent conversation with it.
 
 ---
 
-## 🚀 Live Demo
+## 👩‍💻 Submitted By
 
-🔗 **[Live Project Link](https://google-notebooklm-rag.onrender.com)** *(Deployed on Render)*
-
----
-
-## 📖 What It Does
-
-1. **Upload** — Drop any PDF document into the app
-2. **Process** — The system automatically chunks, embeds, and indexes the document
-3. **Chat** — Ask natural language questions and get answers grounded in the document
-4. **Cite** — Every answer includes source references with page numbers
+| Field | Details |
+|-------|---------|
+| **Name** | Saniya Sanjiv Patil |
+| **Roll Number** | 2024EB02305 |
 
 ---
 
-## 🏗️ Architecture
+## 🔗 Live Demo
+
+🌐 **Deployed Application:** [https://google-notebooklm-rag.vercel.app](https://google-notebooklm-rag.vercel.app)
+
+📦 **GitHub Repository:** [https://github.com/Saniya1613/Google-NotebookLM-RAG](https://github.com/Saniya1613/Google-NotebookLM-RAG)
+
+---
+
+## 📖 What This Application Does
+
+This is a full-stack, production-ready RAG (Retrieval-Augmented Generation) application that mimics Google NotebookLM. Users can:
+
+1. **Upload** a PDF document through a drag-and-drop web interface
+2. **Process** — the system automatically chunks, embeds, and indexes the document into a vector database
+3. **Chat** — ask natural language questions and receive answers grounded in the document's actual content
+4. **Cite** — every answer includes source references with page numbers
+
+> 💡 **Key Principle:** Answers come exclusively from the uploaded document — the LLM is strictly prohibited from using its general knowledge, preventing hallucination.
+
+---
+
+## 🏗️ System Architecture
 
 ```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Web Frontend   │────▶│  Express.js API   │────▶│   Qdrant Cloud   │
-│  (HTML/CSS/JS)   │◀────│   (Node.js)       │◀────│   Vector DB      │
-└──────────────────┘     └───┬──────────┬───┘     └──────────────────┘
+┌──────────────────┐     ┌───────────────────┐     ┌──────────────────┐
+│   Web Frontend   │────▶│   Express.js API   │────▶│   Qdrant Cloud   │
+│  (HTML/CSS/JS)   │◀────│    (Node.js)       │◀────│   (Vector DB)    │
+└──────────────────┘     └───┬──────────┬────┘     └──────────────────┘
                              │          │
-                   ┌─────────▼──┐  ┌────▼─────────────────┐
-                   │   Groq     │  │  Google Gemini       │
-                   │   LLM      │  │  Embeddings          │
-                   └────────────┘  └──────────────────────┘
+                   ┌─────────▼──┐  ┌────▼──────────────┐
+                   │    Groq    │  │  Google Gemini     │
+                   │    LLM     │  │  Embeddings API    │
+                   └────────────┘  └───────────────────┘
+```
+
+**Data Flow:**
+```
+User uploads PDF → PDFLoader → Chunking → Embedding (Gemini) → Qdrant Storage
+User asks question → Embed query → Cosine similarity search → Retrieve top-k chunks → LLM generates grounded answer
 ```
 
 ---
 
 ## 🔧 RAG Pipeline — End to End
 
-### 1. Document Ingestion (`src/rag/ingestion.js`)
+### Stage 1: Document Ingestion
 
-When a user uploads a PDF:
+**File:** `src/rag/ingestion.js`
+
+When a user uploads a PDF, the system executes the following pipeline:
 
 ```
-PDF Upload → PDF Loading → Chunking → Embedding → Vector Storage
+PDF File → Load Pages → Split into Chunks → Generate Embeddings → Store in Qdrant
 ```
 
-### 2. Chunking Strategy: RecursiveCharacterTextSplitter
+Each uploaded document receives a **unique Qdrant collection**, ensuring isolated, document-specific retrieval.
 
-We use **RecursiveCharacterTextSplitter** from LangChain — a hierarchical text splitting strategy that preserves semantic boundaries.
+---
 
-**Why this strategy?**
-- Splits text using multiple separators in priority order: `["\n\n", "\n", ". ", " ", ""]`
-- Paragraphs are kept intact whenever possible
-- Falls back to sentence-level and word-level splitting only when chunks exceed the size limit
-- Produces semantically coherent chunks that improve retrieval quality
+### Stage 2: Chunking Strategy
 
-**Configuration:**
+**Algorithm:** `RecursiveCharacterTextSplitter` (LangChain)
+
+This is a hierarchical text splitting strategy that preserves semantic boundaries by attempting splits in priority order:
+
 ```javascript
 const textSplitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 1000,       // Each chunk ≤ 1000 characters
-  chunkOverlap: 200,     // 200-char overlap to preserve context at boundaries
+  chunkSize: 1000,
+  chunkOverlap: 200,
   separators: ["\n\n", "\n", ". ", " ", ""],
 });
 ```
 
-**Parameters Explained:**
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `chunkSize` | 1000 | Balances context richness with retrieval precision |
-| `chunkOverlap` | 200 | Ensures no information lost at chunk boundaries |
-| `separators` | `["\n\n", "\n", ". ", " ", ""]` | Prioritizes paragraph → line → sentence → word splits |
+| `chunkSize` | 1000 chars | Balances context richness with retrieval precision |
+| `chunkOverlap` | 200 chars | Ensures no information is lost at chunk boundaries |
+| `separators` | `["\n\n", "\n", ". ", " ", ""]` | Splits by paragraph → line → sentence → word (hierarchical) |
 
-### 3. Embedding Model (`src/rag/embeddings.js`)
+**Why RecursiveCharacterTextSplitter?**
+- Paragraphs are kept intact whenever possible
+- Falls back to finer-grained splitting only when chunks exceed the size limit
+- Produces semantically coherent chunks, which significantly improves retrieval quality compared to naive fixed-size splitting
 
-- **Model:** Google Gemini `text-embedding-004`
-- **Dimensions:** 768
-- Free cloud-based embedding API (1,500 requests/day free tier)
-- LangChain-compatible via `@langchain/google-genai`
-- Converts text chunks into high-dimensional vectors for semantic search
+---
 
-### 4. Vector Database — Qdrant Cloud
+### Stage 3: Embedding Model
 
-- Each uploaded document gets its own Qdrant collection
-- Enables isolated, document-specific retrieval
-- Cosine similarity search for finding relevant chunks
+**File:** `src/rag/embeddings.js`
 
-### 5. Retrieval
+| Property | Value |
+|----------|-------|
+| **Model** | `gemini-embedding-001` |
+| **Provider** | Google Gemini API |
+| **Dimensions** | 768 |
+| **Integration** | `@langchain/google-genai` (LangChain-compatible) |
 
-- User query is embedded using the same model
-- Top-k (k=4) most similar chunks are retrieved from Qdrant
-- Chunks include metadata: page number, chunk index, document name
+The embedding model converts each text chunk into a 768-dimensional vector. The same model is used to embed user queries at retrieval time, ensuring consistent vector space representation.
 
-### 6. Generation (`src/rag/generation.js`)
+---
 
-- Retrieved chunks are formatted with page references
-- Strict system prompt ensures the LLM answers ONLY from the provided context
-- If the answer isn't in the document, the LLM explicitly says so
-- **Model:** Groq `llama-3.3-70b-versatile` with `temperature=0.3` for factual responses
+### Stage 4: Vector Storage — Qdrant Cloud
+
+| Property | Value |
+|----------|-------|
+| **Database** | Qdrant Cloud (free tier) |
+| **Distance Metric** | Cosine Similarity |
+| **Collection Strategy** | One collection per document |
+
+Each document gets its own isolated Qdrant collection (named `doc_<uuid>`), which enables:
+- Document-specific retrieval without cross-document contamination
+- Clean document management (list, delete)
+- Metadata storage (page number, chunk index, document name) alongside vectors
+
+---
+
+### Stage 5: Retrieval
+
+When a user asks a question:
+
+1. The query is embedded using the same Gemini embedding model
+2. Cosine similarity search retrieves the **top-k (k=4)** most relevant chunks
+3. Each chunk carries metadata: page number, chunk index, and document name
+4. Retrieved chunks are passed to the LLM as context
+
+---
+
+### Stage 6: Grounded Generation
+
+**File:** `src/rag/generation.js`
+
+| Property | Value |
+|----------|-------|
+| **Model** | `llama-3.3-70b-versatile` |
+| **Provider** | Groq API |
+| **Temperature** | 0.3 (low — for factual, deterministic responses) |
+
+The system prompt enforces strict grounding rules:
+
+```
+STRICT RULES:
+1. ONLY answer based on the provided document context
+2. If the answer cannot be found, explicitly say so
+3. NEVER use general knowledge — all answers must be grounded
+4. Reference page numbers when possible
+5. Provide clear, well-structured answers
+```
+
+This ensures the LLM acts as a **document-grounded assistant**, not a general-purpose chatbot.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Runtime | Node.js (ES Modules) |
-| Server | Express.js |
-| PDF Loading | LangChain PDFLoader |
-| Chunking | LangChain RecursiveCharacterTextSplitter |
-| Embeddings | Google Gemini text-embedding-004 (free) |
-| Vector DB | Qdrant Cloud |
-| LLM | Groq llama-3.3-70b-versatile |
-| Frontend | HTML5, CSS3, Vanilla JavaScript |
-| Deployment | Render |
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Runtime** | Node.js (ES Modules) | Server-side JavaScript |
+| **Server** | Express.js | REST API + static file serving |
+| **PDF Parsing** | LangChain PDFLoader | Extract text from uploaded PDFs |
+| **Chunking** | LangChain RecursiveCharacterTextSplitter | Semantic document splitting |
+| **Embeddings** | Google Gemini `gemini-embedding-001` | Text → 768-dim vector conversion |
+| **Vector DB** | Qdrant Cloud | Persistent vector storage + similarity search |
+| **LLM** | Groq `llama-3.3-70b-versatile` | Grounded answer generation |
+| **Frontend** | HTML5, CSS3, Vanilla JavaScript | Responsive web interface |
+| **Deployment** | Vercel (serverless) | Production hosting |
 
 ---
 
@@ -125,23 +185,25 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 
 ```
 Google-NotebookLM-RAG/
-├── public/                  # Frontend (served by Express)
-│   ├── index.html           # Main HTML with chat UI
-│   ├── style.css            # Premium dark theme styles
-│   └── app.js               # Frontend JavaScript
+├── api/
+│   └── index.js               # Vercel serverless entry point
+├── public/                     # Frontend (static files)
+│   ├── index.html              # Main HTML — chat UI + upload interface
+│   ├── style.css               # Premium dark theme with glassmorphism
+│   └── app.js                  # Frontend logic (upload, chat, rendering)
 ├── src/
-│   ├── index.js             # Express server entry point
+│   ├── app.js                  # Express app configuration
+│   ├── index.js                # Local development server entry point
 │   ├── rag/
-│   │   ├── embeddings.js    # Google Gemini embeddings integration
-│   │   ├── ingestion.js     # Ingestion pipeline (load → chunk → embed → store)
-│   │   └── generation.js    # LLM generation with Groq + grounding rules
+│   │   ├── embeddings.js       # Google Gemini embedding integration
+│   │   ├── ingestion.js        # Full ingestion pipeline (load → chunk → embed → store)
+│   │   └── generation.js       # Groq LLM generation with grounding rules
 │   └── routes/
-│       ├── upload.js        # POST /api/upload — file upload + ingestion
-│       ├── chat.js          # POST /api/chat — query + retrieval + generation
-│       └── documents.js     # GET /api/documents — list uploaded docs
-├── uploads/                 # Temporary file storage (gitignored)
-├── .env.example             # Environment variables template
-├── .gitignore
+│       ├── upload.js           # POST /api/upload — PDF upload + ingestion
+│       ├── chat.js             # POST /api/chat — retrieval + generation
+│       └── documents.js        # GET /api/documents — list indexed documents
+├── .env.example                # Environment variables template
+├── vercel.json                 # Vercel deployment configuration
 ├── package.json
 └── README.md
 ```
@@ -152,55 +214,44 @@ Google-NotebookLM-RAG/
 
 ### Prerequisites
 
-- Node.js 18+
-- Groq API key (free at [console.groq.com](https://console.groq.com))
-- Google AI API key (free at [ai.google.dev](https://ai.google.dev))
-- Qdrant Cloud account (free tier available at [cloud.qdrant.io](https://cloud.qdrant.io))
+- **Node.js** 18+
+- **Groq API key** — free at [console.groq.com](https://console.groq.com)
+- **Google AI API key** — free at [aistudio.google.com](https://aistudio.google.com/apikey)
+- **Qdrant Cloud** — free tier at [cloud.qdrant.io](https://cloud.qdrant.io)
 
 ### Steps
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Saniya1613/Google-NotebookLM-RAG.git
-   cd Google-NotebookLM-RAG
-   ```
+```bash
+# 1. Clone the repository
+git clone https://github.com/Saniya1613/Google-NotebookLM-RAG.git
+cd Google-NotebookLM-RAG
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+# 2. Install dependencies
+npm install
 
-3. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` and add your keys:
-   ```
-   GROQ_API_KEY=gsk_your-groq-key-here
-   GOOGLE_API_KEY=your-google-ai-key-here
-   QDRANT_URL=https://your-cluster.cloud.qdrant.io
-   QDRANT_API_KEY=your-qdrant-api-key
-   PORT=3000
-   ```
+# 3. Configure environment variables
+cp .env.example .env
+# Edit .env with your API keys:
+#   GROQ_API_KEY=gsk_your-key
+#   GOOGLE_API_KEY=your-google-key
+#   QDRANT_URL=https://your-cluster.cloud.qdrant.io:6333
+#   QDRANT_API_KEY=your-qdrant-key
 
-4. **Start the server**
-   ```bash
-   npm run dev
-   ```
+# 4. Start the development server
+npm run dev
 
-5. **Open in browser**
-   ```
-   http://localhost:3000
-   ```
+# 5. Open in browser
+# → http://localhost:3000
+```
 
 ---
 
-## 📡 API Endpoints
+## 📡 API Reference
 
 ### `POST /api/upload`
-Upload and ingest a PDF document.
+Upload and ingest a PDF document into the RAG pipeline.
 
-**Request:** `multipart/form-data` with field `document` (PDF file)
+**Request:** `multipart/form-data` with field `document` (PDF file, max 10MB)
 
 **Response:**
 ```json
@@ -208,12 +259,12 @@ Upload and ingest a PDF document.
   "success": true,
   "message": "Document uploaded and indexed successfully",
   "document": {
-    "id": "uuid",
-    "name": "example.pdf",
-    "collectionName": "doc_uuid",
+    "id": "5e9c1eab-a4f1-45e7-a42b-722f862de674",
+    "name": "research-paper.pdf",
+    "collectionName": "doc_5e9c1eab_a4f1_45e7_a42b_722f862de674",
     "chunkCount": 42,
     "pageCount": 10,
-    "uploadedAt": "2026-05-10T..."
+    "uploadedAt": "2026-05-10T15:46:21.435Z"
   }
 }
 ```
@@ -224,8 +275,8 @@ Ask a question about an uploaded document.
 **Request:**
 ```json
 {
-  "documentId": "uuid",
-  "query": "What is the main topic of this document?"
+  "documentId": "5e9c1eab-a4f1-45e7-a42b-722f862de674",
+  "query": "What is the main conclusion of this paper?"
 }
 ```
 
@@ -233,22 +284,47 @@ Ask a question about an uploaded document.
 ```json
 {
   "success": true,
-  "answer": "Based on the document...",
+  "answer": "Based on Page 8 of the document, the main conclusion is...",
   "sources": [
     {
       "chunkIndex": 1,
-      "page": 3,
-      "preview": "The main topic discussed..."
+      "page": 8,
+      "preview": "In conclusion, our findings demonstrate..."
     }
   ]
 }
 ```
 
 ### `GET /api/documents`
-List all uploaded documents.
+List all uploaded and indexed documents (reads from Qdrant — stateless).
 
 ### `GET /api/health`
-Health check endpoint.
+Server health check endpoint.
+
+---
+
+## 🎨 Frontend Design
+
+The web interface features a premium dark theme with:
+- **Glassmorphism** design with frosted-glass sidebar and cards
+- **Drag-and-drop** PDF upload zone with progress tracking
+- **Real-time chat** interface with markdown-rendered responses
+- **Source citations** displayed alongside each answer
+- **Responsive layout** that works on desktop and mobile
+- **Ambient gradient animations** for a polished, modern feel
+
+---
+
+## ⚙️ Design Decisions
+
+| Decision | Reasoning |
+|----------|-----------|
+| **RecursiveCharacterTextSplitter** over fixed-size | Preserves semantic boundaries, improving retrieval quality |
+| **Gemini embeddings** over local models | Cloud-based = no cold start delays, instant on serverless |
+| **One Qdrant collection per document** | Isolates documents, prevents cross-contamination in retrieval |
+| **Groq with low temperature (0.3)** | Prioritizes factual, deterministic responses over creativity |
+| **Strict grounding prompt** | Prevents LLM hallucination — answers only from document |
+| **Stateless architecture** | Works on Vercel serverless — no in-memory state between requests |
 
 ---
 
