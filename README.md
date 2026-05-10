@@ -9,7 +9,7 @@
 | Field | Details |
 |-------|---------|
 | **Name** | Saniya Sanjiv Patil |
-| **Roll Number** | 2024EB02305 |
+| **Roll Number** | 24BCS10246 |
 
 ---
 
