@@ -1,10 +1,10 @@
 /**
- * Document Ingestion Pipeline
+ * Document Ingestion Pipeline (Stateless / Serverless-compatible)
  * 
  * This module handles the full ingestion process:
  * 1. Load PDF/Text documents
  * 2. Chunk documents using Recursive Character Text Splitting
- * 3. Generate embeddings using Google Gemini text-embedding-004
+ * 3. Generate embeddings using Google Gemini gemini-embedding-001
  * 4. Store embeddings in Qdrant vector database
  * 
  * Chunking Strategy: RecursiveCharacterTextSplitter
@@ -18,16 +18,27 @@
  * Configuration:
  * - chunkSize: 1000 characters — balances context richness with retrieval precision
  * - chunkOverlap: 200 characters — ensures no information is lost at chunk boundaries
+ * 
+ * Note: This module is fully stateless — document metadata is stored inside
+ * Qdrant alongside the vectors, so it works in serverless environments (Vercel).
  */
 
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { QdrantVectorStore } from "@langchain/qdrant";
+import { QdrantClient } from "@qdrant/js-client-rest";
 import { v4 as uuidv4 } from "uuid";
 import { getEmbeddings } from "./embeddings.js";
 
-// In-memory document registry to track uploaded documents
-const documentRegistry = new Map();
+/**
+ * Get a Qdrant REST client for direct collection operations
+ */
+function getQdrantClient() {
+  return new QdrantClient({
+    url: process.env.QDRANT_URL,
+    apiKey: process.env.QDRANT_API_KEY,
+  });
+}
 
 /**
  * Get or create a Qdrant vector store for a specific collection
@@ -81,6 +92,7 @@ export async function ingestDocument(filePath, originalName) {
       documentName: originalName,
       chunkIndex: index,
       totalChunks: chunks.length,
+      pageCount: rawDocs.length,
     },
   }));
 
@@ -94,7 +106,7 @@ export async function ingestDocument(filePath, originalName) {
     collectionName,
   });
 
-  // Register the document
+  // Build document info from the data we just stored
   const docInfo = {
     id: documentId,
     name: originalName,
@@ -103,8 +115,6 @@ export async function ingestDocument(filePath, originalName) {
     pageCount: rawDocs.length,
     uploadedAt: new Date().toISOString(),
   };
-
-  documentRegistry.set(documentId, docInfo);
 
   console.log(`✅ Indexing complete! ${chunks.length} chunks stored in collection: ${collectionName}`);
 
@@ -120,12 +130,10 @@ export async function ingestDocument(filePath, originalName) {
  * @returns {Array} - Top-k most relevant document chunks
  */
 export async function retrieveChunks(documentId, query, k = 4) {
-  const docInfo = documentRegistry.get(documentId);
-  if (!docInfo) {
-    throw new Error(`Document not found: ${documentId}`);
-  }
+  // Derive collection name from document ID (stateless — no registry needed)
+  const collectionName = `doc_${documentId.replace(/-/g, "_")}`;
 
-  const vectorStore = await getVectorStore(docInfo.collectionName);
+  const vectorStore = await getVectorStore(collectionName);
   const retriever = vectorStore.asRetriever({ k });
   const relevantChunks = await retriever.invoke(query);
 
@@ -133,15 +141,52 @@ export async function retrieveChunks(documentId, query, k = 4) {
 }
 
 /**
- * Get all registered documents
+ * Get all documents by querying Qdrant collections directly.
+ * This is stateless — works across serverless function invocations.
  */
-export function getDocuments() {
-  return Array.from(documentRegistry.values());
+export async function getDocuments() {
+  try {
+    const client = getQdrantClient();
+    const { collections } = await client.getCollections();
+
+    const docs = [];
+    for (const col of collections) {
+      if (col.name.startsWith("doc_")) {
+        try {
+          // Retrieve one point to extract document metadata
+          const result = await client.scroll(col.name, { limit: 1, with_payload: true });
+          if (result.points && result.points.length > 0) {
+            const meta = result.points[0].payload?.metadata || {};
+            docs.push({
+              id: meta.documentId || col.name.replace("doc_", "").replace(/_/g, "-"),
+              name: meta.documentName || col.name,
+              collectionName: col.name,
+              chunkCount: meta.totalChunks || 0,
+              pageCount: meta.pageCount || 0,
+            });
+          }
+        } catch (e) {
+          // Skip collections we can't read
+        }
+      }
+    }
+    return docs;
+  } catch (error) {
+    console.error("Error fetching documents:", error.message);
+    return [];
+  }
 }
 
 /**
- * Check if a document exists
+ * Check if a document exists by verifying its Qdrant collection
  */
-export function documentExists(documentId) {
-  return documentRegistry.has(documentId);
+export async function documentExists(documentId) {
+  try {
+    const client = getQdrantClient();
+    const collectionName = `doc_${documentId.replace(/-/g, "_")}`;
+    await client.getCollection(collectionName);
+    return true;
+  } catch {
+    return false;
+  }
 }

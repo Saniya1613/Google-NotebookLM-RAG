@@ -12,9 +12,14 @@ const router = Router();
  * GET /api/documents
  * Returns all uploaded documents with their metadata
  */
-router.get("/", (req, res) => {
-  const documents = getDocuments();
-  res.json({ documents });
+router.get("/", async (req, res) => {
+  try {
+    const documents = await getDocuments();
+    res.json({ documents });
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+    res.json({ documents: [] });
+  }
 });
 
 export { router as documentsRouter };
