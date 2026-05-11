@@ -15,7 +15,7 @@
 
 ## 🔗 Live Demo
 
-🌐 **Deployed Application:** [https://google-notebooklm-rag.vercel.app](https://google-notebooklm-rag.vercel.app)
+🌐 **Deployed Application:** [https://google-notebooklm-rag.vercel.app](https://google-notebook-lm-rag.vercel.app/)
 
 📦 **GitHub Repository:** [https://github.com/Saniya1613/Google-NotebookLM-RAG](https://github.com/Saniya1613/Google-NotebookLM-RAG)
 
